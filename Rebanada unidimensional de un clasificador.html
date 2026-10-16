@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rebanada unidimensional de un clasificador lineal multiclase</title>
+<style>
+:root { --bg:#ffffff; --t:#2c2c2a; --muted:#5f5e5a; --b:#b4b2a9; --hover:rgba(127,127,127,0.12); --sel:rgba(127,127,127,0.22); }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1e1e1c; --t:#e8e6de; --muted:#b4b2a9; --b:#6b6a64; }
+}
+* { box-sizing: border-box; }
+body { margin:0; padding:24px 16px 40px; background:var(--bg); color:var(--t);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+main { width:1000px; margin:0 auto; position:relative; }
+h1 { font-size:20px; font-weight:500; margin:0 0 4px; }
+h2 { font-size:15px; font-weight:500; margin:16px 0 4px; }
+h3 { font-size:14px; font-weight:500; margin:0 0 8px; }
+p.sub { margin:0 0 10px; font-size:14px; color:var(--muted); line-height:1.5; max-width:680px; }
+.layout { display:grid; grid-template-columns:680px 300px; gap:24px; align-items:start; }
+.left svg { display:block; width:680px; }
+.right { position:sticky; top:16px; }
+.panel { border:1px solid var(--b); border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+svg text { fill:var(--t); font-family:inherit; }
+.th { font-size:14px; font-weight:500; }
+.ts { font-size:12px; fill:var(--muted); }
+
+.rb { position:absolute; opacity:0; pointer-events:none; }
+.g { display:none; }
+#c1:checked ~ .layout .g1, #c2:checked ~ .layout .g2, #c3:checked ~ .layout .g3, #cs:checked ~ .layout .gs { display:inline; }
+
+.tgs { display:flex; flex-direction:column; gap:2px; }
+.tg { display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer; font-size:14px; }
+.sw { position:relative; flex:none; width:36px; height:20px; border-radius:10px; background:rgba(127,127,127,0.4); transition:background .15s; }
+.sw::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#ffffff; transition:left .15s; }
+.tg[for=c1] { color:#378ADD; } .tg[for=c2] { color:#1D9E75; } .tg[for=c3] { color:#D85A30; } .tg[for=cs] { color:#534AB7; }
+#c1:checked ~ .layout label[for=c1] .sw { background:#378ADD; }
+#c2:checked ~ .layout label[for=c2] .sw { background:#1D9E75; }
+#c3:checked ~ .layout label[for=c3] .sw { background:#D85A30; }
+#cs:checked ~ .layout label[for=cs] .sw { background:#534AB7; }
+#c1:checked ~ .layout label[for=c1] .sw::after, #c2:checked ~ .layout label[for=c2] .sw::after,
+#c3:checked ~ .layout label[for=c3] .sw::after, #cs:checked ~ .layout label[for=cs] .sw::after { left:18px; }
+#c1:focus-visible ~ .layout label[for=c1] .sw, #c2:focus-visible ~ .layout label[for=c2] .sw,
+#c3:focus-visible ~ .layout label[for=c3] .sw, #cs:focus-visible ~ .layout label[for=cs] .sw { outline:2px solid var(--t); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition:none; } }
+
+.ctl { margin-bottom:10px; }
+.ctl .row { display:flex; justify-content:space-between; font-size:14px; margin-bottom:2px; }
+.ctl .val { font-variant-numeric:tabular-nums; }
+.ctl input[type=range] { width:100%; height:20px; margin:0; background:transparent; -webkit-appearance:none; appearance:none; cursor:pointer; --c:#534AB7; }
+.ctl input[type=range]::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:rgba(127,127,127,0.35); }
+.ctl input[type=range]::-moz-range-track { height:4px; border-radius:2px; background:rgba(127,127,127,0.35); }
+.ctl input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; margin-top:-6px; border-radius:50%; background:var(--c); border:2px solid var(--bg); }
+.ctl input[type=range]::-moz-range-thumb { width:12px; height:12px; border-radius:50%; background:var(--c); border:2px solid var(--bg); }
+#sb1 { --c:#378ADD; } #sb2 { --c:#1D9E75; } #sb3 { --c:#D85A30; }
+.legend { display:flex; gap:16px; font-size:13px; color:var(--muted); margin:4px 0 0; flex-wrap:wrap; }
+.legend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+.eqs { font-size:13px; line-height:1.7; font-variant-numeric:tabular-nums; }
+button.reset { width:100%; padding:6px 12px; border:1px solid var(--b); border-radius:8px; background:transparent; color:var(--t); font:inherit; font-size:14px; cursor:pointer; }
+button.reset:hover { background:var(--hover); }
+</style>
+</head>
+<body>
+<main>
+<h1>De un plano de datos a una rebanada de scores</h1>
+<p class="sub">La línea violeta es la rebanada: un camino recto sobre el plano de entrada. Al recorrerla, cada score f<sub>c</sub> = w<sub>c</sub>·x + b<sub>c</sub> se vuelve una recta en la variable t. Los cruces de la rebanada con las fronteras de decisión son exactamente los cruces entre rectas del gráfico de abajo.</p>
+
+<input class="rb" type="checkbox" id="c1" checked aria-label="Mostrar recta f1 = 0">
+<input class="rb" type="checkbox" id="c2" aria-label="Mostrar recta f2 = 0">
+<input class="rb" type="checkbox" id="c3" aria-label="Mostrar recta f3 = 0">
+<input class="rb" type="checkbox" id="cs" checked aria-label="Mostrar la rebanada">
+
+<div class="layout">
+<div class="left">
+
+<svg viewBox="0 0 680 420" height="420" role="img" aria-label="Plano de entrada con regiones de decisión, rectas f_c = 0 y la rebanada">
+<title>Plano de entrada con regiones de decisión, rectas f_c = 0 y la rebanada</title>
+<defs>
+<clipPath id="disk"><rect x="20" y="20" width="640" height="380"/></clipPath>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<g id="grid"></g>
+<g clip-path="url(#disk)">
+<path id="reg1" fill="#378ADD" fill-opacity="0.18"/>
+<path id="reg2" fill="#1D9E75" fill-opacity="0.18"/>
+<path id="reg3" fill="#D85A30" fill-opacity="0.18"/>
+</g>
+<g class="g g1" clip-path="url(#disk)"><path id="pp1" fill="#378ADD" fill-opacity="0.30"/><path id="pn1" fill="#888780" fill-opacity="0.22"/></g>
+<g class="g g2" clip-path="url(#disk)"><path id="pp2" fill="#1D9E75" fill-opacity="0.30"/><path id="pn2" fill="#888780" fill-opacity="0.22"/></g>
+<g class="g g3" clip-path="url(#disk)"><path id="pp3" fill="#D85A30" fill-opacity="0.30"/><path id="pn3" fill="#888780" fill-opacity="0.22"/></g>
+<g clip-path="url(#disk)" stroke="var(--t)" stroke-width="1.5" stroke-dasharray="6 4">
+<line id="bd12"/><line id="bd13"/><line id="bd23"/>
+</g>
+
+<g class="g g1"><line id="zl1" stroke="#378ADD" stroke-width="2.5" clip-path="url(#disk)"/><text id="zt1" class="ts" text-anchor="middle" style="fill:#378ADD">f₁ = 0</text><line id="wa1" stroke="#378ADD" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="g g2"><line id="zl2" stroke="#1D9E75" stroke-width="2.5" clip-path="url(#disk)"/><text id="zt2" class="ts" text-anchor="middle" style="fill:#1D9E75">f₂ = 0</text><line id="wa2" stroke="#1D9E75" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="g g3"><line id="zl3" stroke="#D85A30" stroke-width="2.5" clip-path="url(#disk)"/><text id="zt3" class="ts" text-anchor="middle" style="fill:#D85A30">f₃ = 0</text><line id="wa3" stroke="#D85A30" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+
+<rect x="20" y="20" width="640" height="380" fill="none" stroke="var(--b)" stroke-width="1"/>
+<circle cx="340" cy="210" r="3" fill="var(--t)"/>
+<circle id="tp" r="6" fill="none" stroke="var(--t)" stroke-width="1.5" clip-path="url(#disk)"/>
+
+<text class="th" x="520" y="238" style="fill:#378ADD">Clase 1</text>
+<text class="ts" x="520" y="256">w₁ = (2, 0)</text>
+<text class="th" x="20" y="60" style="fill:#1D9E75">Clase 2</text>
+<text class="ts" x="20" y="78">w₂ = (−1, 1.73)</text>
+<text class="th" x="20" y="370" style="fill:#D85A30">Clase 3</text>
+<text class="ts" x="20" y="388">w₃ = (−1, −1.73)</text>
+<text class="ts" x="446" y="40">frontera 1|2</text>
+<text class="ts" x="446" y="396">frontera 1|3</text>
+<text class="ts" x="20" y="196">frontera 2|3</text>
+
+<g class="g g1"><text id="lp1" class="th" text-anchor="middle" style="fill:#378ADD">f₁ &gt; 0</text><text id="ln1" class="th" text-anchor="middle" style="fill:var(--muted)">f₁ &lt; 0</text></g>
+<g class="g g2"><text id="lp2" class="th" text-anchor="middle" style="fill:#1D9E75">f₂ &gt; 0</text><text id="ln2" class="th" text-anchor="middle" style="fill:var(--muted)">f₂ &lt; 0</text></g>
+<g class="g g3"><text id="lp3" class="th" text-anchor="middle" style="fill:#D85A30">f₃ &gt; 0</text><text id="ln3" class="th" text-anchor="middle" style="fill:var(--muted)">f₃ &lt; 0</text></g>
+
+<g class="g gs">
+<line id="sl" stroke="#534AB7" stroke-width="3" marker-end="url(#arrow)"/>
+<g id="tk"></g>
+<text id="sl0" class="ts" text-anchor="middle" style="fill:#534AB7"></text>
+<text id="sl1" class="ts" text-anchor="middle" style="fill:#534AB7"></text>
+<circle id="pm" r="7" stroke="var(--bg)" stroke-width="2"/>
+</g>
+</svg>
+<div class="legend"><span><i style="border:1.5px solid var(--t)"></i>empate de las 3 clases</span><span><i style="border:2px solid #534AB7"></i>cruce de la rebanada con una frontera</span></div>
+
+<h2>Scores a lo largo de la rebanada</h2>
+<svg viewBox="0 0 680 270" height="270" role="img" aria-label="Scores de cada clase en función de t">
+<title>Scores de cada clase en función de la posición t sobre la rebanada</title>
+<defs><clipPath id="plot"><rect x="60" y="30" width="580" height="200"/></clipPath></defs>
+<g id="bands" clip-path="url(#plot)"></g>
+<line x1="60" y1="130" x2="640" y2="130" stroke="var(--b)" stroke-width="1"/>
+<line x1="60" y1="30" x2="60" y2="230" stroke="var(--b)" stroke-width="1"/>
+<line x1="60" y1="230" x2="640" y2="230" stroke="var(--b)" stroke-width="1"/>
+<g id="env" clip-path="url(#plot)"></g>
+<g id="lines" clip-path="url(#plot)"></g>
+<g id="bp"></g>
+<g id="mk"></g>
+<text class="ts" x="56" y="34" text-anchor="end">+12</text>
+<text class="ts" x="56" y="134" text-anchor="end">0</text>
+<text class="ts" x="56" y="234" text-anchor="end">−12</text>
+<text class="ts" x="14" y="20">score</text>
+<text id="tl" class="ts" x="60" y="248" text-anchor="middle"></text>
+<text id="tc" class="ts" x="350" y="248" text-anchor="middle">0</text>
+<text id="tr" class="ts" x="640" y="248" text-anchor="middle"></text>
+<text class="ts" x="350" y="264" text-anchor="middle">posición t sobre la rebanada</text>
+<g id="endl"></g>
+</svg>
+<p class="sub" style="margin-top:6px">La línea gris gruesa es el score ganador, max<sub>c</sub> f<sub>c</sub>(t). El color de fondo indica qué clase gana en cada tramo. La pendiente de cada recta es w<sub>c</sub>·u y su altura en t = 0 es w<sub>c</sub>·x<sub>0</sub> + b<sub>c</sub>, donde u es la dirección de la rebanada y x<sub>0</sub> su punto más cercano al origen.</p>
+</div>
+
+<div class="right">
+<div class="panel">
+<h3>Rectas f<sub>c</sub> = 0</h3>
+<div class="tgs">
+<label class="tg" for="c1"><span class="sw"></span>Clase 1: f₁ = 0</label>
+<label class="tg" for="c2"><span class="sw"></span>Clase 2: f₂ = 0</label>
+<label class="tg" for="c3"><span class="sw"></span>Clase 3: f₃ = 0</label>
+</div>
+</div>
+
+<div class="panel">
+<h3>Rebanada</h3>
+<div class="tgs" style="margin-bottom:8px"><label class="tg" for="cs"><span class="sw"></span>Mostrar en el plano</label></div>
+<div class="ctl"><div class="row"><span>Dirección</span><span class="val" id="vth"></span></div><input type="range" id="sth" min="0" max="180" step="1" value="90" aria-label="Dirección de la rebanada"></div>
+<div class="ctl"><div class="row"><span>Desplazamiento</span><span class="val" id="vof"></span></div><input type="range" id="sof" min="-3" max="3" step="0.1" value="-1" aria-label="Desplazamiento de la rebanada"></div>
+<div class="ctl"><div class="row"><span>Marcador</span><span class="val" id="vtm"></span></div><input type="range" id="stm" min="-100" max="100" step="1" value="30" aria-label="Posición del marcador"></div>
+</div>
+
+<div class="panel">
+<h3>Sesgos</h3>
+<div class="ctl"><div class="row" style="color:#378ADD"><span>b₁</span><span class="val" id="vb1"></span></div><input type="range" id="sb1" min="-6" max="6" step="0.5" value="0" aria-label="Sesgo b1"></div>
+<div class="ctl"><div class="row" style="color:#1D9E75"><span>b₂</span><span class="val" id="vb2"></span></div><input type="range" id="sb2" min="-6" max="6" step="0.5" value="0" aria-label="Sesgo b2"></div>
+<div class="ctl"><div class="row" style="color:#D85A30"><span>b₃</span><span class="val" id="vb3"></span></div><input type="range" id="sb3" min="-6" max="6" step="0.5" value="0" aria-label="Sesgo b3"></div>
+</div>
+
+<div class="panel"><div class="eqs" id="eqs"></div></div>
+<button class="reset" id="reset" type="button">Restablecer</button>
+</div>
+</div>
+</main>
+
+<script>
+(function () {
+  var CX = 340, CY = 210, S = 50, SQ = Math.sqrt(3);
+  var XL = 20, XR = 660, YT = 20, YB = 400;
+  var W = { 1: [2, 0], 2: [-1, SQ], 3: [-1, -SQ] };
+  var B = { 1: 0, 2: 0, 3: 0 };
+  var COL = { 1: '#378ADD', 2: '#1D9E75', 3: '#D85A30' };
+  var SUB = { 1: '₁', 2: '₂', 3: '₃' };
+  var BIG = [[-1000, -1000], [1700, -1000], [1700, 1400], [-1000, 1400]];
+  var PL = 60, PR = 640, PT = 30, PB = 230, YR = 12;
+  var DEF = { th: 90, off: -1, tm: 30 };
+
+  function $(id) { return document.getElementById(id); }
+  function lin(c) { var w = W[c]; return [w[0] / S, -w[1] / S, B[c] - w[0] * CX / S + w[1] * CY / S]; }
+  function ev(L, P) { return L[0] * P[0] + L[1] * P[1] + L[2]; }
+  function sub(L, M) { return [L[0] - M[0], L[1] - M[1], L[2] - M[2]]; }
+  function neg(L) { return [-L[0], -L[1], -L[2]]; }
+  function clip(poly, L) {
+    var out = [];
+    for (var i = 0; i < poly.length; i++) {
+      var P = poly[i], Q = poly[(i + 1) % poly.length], fp = ev(L, P), fq = ev(L, Q);
+      if (fp >= 0) out.push(P);
+      if ((fp >= 0) !== (fq >= 0)) { var t = fp / (fp - fq); out.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]); }
+    }
+    return out;
+  }
+  function path(poly) {
+    if (poly.length < 3) return '';
+    var s = 'M';
+    for (var i = 0; i < poly.length; i++) s += (i ? ' L' : '') + poly[i][0].toFixed(1) + ' ' + poly[i][1].toFixed(1);
+    return s + ' Z';
+  }
+  function setLine(el, p, q) {
+    el.setAttribute('x1', p[0].toFixed(1)); el.setAttribute('y1', p[1].toFixed(1));
+    el.setAttribute('x2', q[0].toFixed(1)); el.setAttribute('y2', q[1].toFixed(1));
+    el.style.display = '';
+  }
+  function setText(el, x, y) { el.setAttribute('x', x.toFixed(1)); el.setAttribute('y', y.toFixed(1)); }
+  function chordPix(p, d) {
+    var lo = -1e9, hi = 1e9;
+    function ax(pv, dv, a, b) {
+      if (Math.abs(dv) < 1e-9) { if (pv < a || pv > b) { lo = 1; hi = 0; } return; }
+      var t1 = (a - pv) / dv, t2 = (b - pv) / dv;
+      lo = Math.max(lo, Math.min(t1, t2)); hi = Math.min(hi, Math.max(t1, t2));
+    }
+    ax(p[0], d[0], XL, XR); ax(p[1], d[1], YT, YB);
+    return [lo, hi];
+  }
+  function boundary(el, i, j, k, L) {
+    var Lij = sub(L[i], L[j]), n2 = Lij[0] * Lij[0] + Lij[1] * Lij[1];
+    var p0 = [-Lij[2] * Lij[0] / n2, -Lij[2] * Lij[1] / n2], len = Math.sqrt(n2);
+    var dir = [-Lij[1] / len, Lij[0] / len], Lik = sub(L[i], L[k]);
+    var g0 = ev(Lik, p0), g1 = Lik[0] * dir[0] + Lik[1] * dir[1], tmin = -3000, tmax = 3000;
+    if (Math.abs(g1) < 1e-9) { if (g0 < 0) { el.style.display = 'none'; return; } }
+    else { var t0 = -g0 / g1; if (g1 > 0) tmin = Math.max(tmin, t0); else tmax = Math.min(tmax, t0); }
+    if (tmin >= tmax) { el.style.display = 'none'; return; }
+    setLine(el, [p0[0] + tmin * dir[0], p0[1] + tmin * dir[1]], [p0[0] + tmax * dir[0], p0[1] + tmax * dir[1]]);
+  }
+  function sg(v) { return (v < 0 ? '−' : '') + Math.abs(v).toFixed(2); }
+  function st(v) { return (v < 0 ? '−' : '+') + Math.abs(v).toFixed(1); }
+
+  function buildGrid() {
+    var g = '', k, x, y;
+    for (k = -6; k <= 6; k++) {
+      x = CX + S * k;
+      g += '<line x1="' + x + '" y1="' + YT + '" x2="' + x + '" y2="' + YB + '" stroke="var(--b)" stroke-opacity="0.35" stroke-width="1"/>';
+      if (k !== 0) g += '<text class="ts" x="' + x + '" y="415" text-anchor="middle">' + (k < 0 ? '−' : '') + Math.abs(k) + '</text>';
+    }
+    for (k = -3; k <= 3; k++) {
+      y = CY - S * k;
+      g += '<line x1="' + XL + '" y1="' + y + '" x2="' + XR + '" y2="' + y + '" stroke="var(--b)" stroke-opacity="0.35" stroke-width="1"/>';
+      if (k !== 0) g += '<text class="ts" x="16" y="' + (y + 4) + '" text-anchor="end">' + (k < 0 ? '−' : '') + Math.abs(k) + '</text>';
+    }
+    g += '<line x1="' + XL + '" y1="' + CY + '" x2="' + XR + '" y2="' + CY + '" stroke="var(--t)" stroke-opacity="0.5" stroke-width="1"/>';
+    g += '<line x1="' + CX + '" y1="' + YT + '" x2="' + CX + '" y2="' + YB + '" stroke="var(--t)" stroke-opacity="0.5" stroke-width="1"/>';
+    g += '<text class="ts" x="' + (XR - 6) + '" y="' + (CY - 6) + '" text-anchor="end">x₁</text>';
+    g += '<text class="ts" x="' + (CX + 6) + '" y="' + (YT + 12) + '">x₂</text>';
+    $('grid').innerHTML = g;
+  }
+
+  function labelEnd(el, pEnd, inward, text) {
+    var perp = [-inward[1], inward[0]], v = [CX - pEnd[0], CY - pEnd[1]];
+    var sgn = (perp[0] * v[0] + perp[1] * v[1]) >= 0 ? 1 : -1;
+    setText(el, pEnd[0] + inward[0] * 30 + perp[0] * sgn * 14, pEnd[1] + inward[1] * 30 + perp[1] * sgn * 14 + 4);
+    el.textContent = text;
+  }
+
+  function update() {
+    var th = parseFloat($('sth').value), off = parseFloat($('sof').value), tmv = parseFloat($('stm').value);
+    var r = th * Math.PI / 180, u = [Math.cos(r), Math.sin(r)], n = [-Math.sin(r), Math.cos(r)];
+    var x0 = [off * n[0], off * n[1]];
+    var ds = [u[0], -u[1]], ps = [CX + S * x0[0], CY - S * x0[1]];
+    var ch = chordPix(ps, ds), tmin = ch[0] / S, tmax = ch[1] / S, rg = tmax - tmin;
+    var tm = tmin + (tmv + 100) / 200 * rg;
+    var a = {}, k = {}, c;
+    for (c = 1; c <= 3; c++) {
+      a[c] = W[c][0] * u[0] + W[c][1] * u[1];
+      k[c] = W[c][0] * x0[0] + W[c][1] * x0[1] + B[c];
+    }
+    function F(c, t) { return a[c] * t + k[c]; }
+    function win(t) { var best = 1; for (var c = 2; c <= 3; c++) if (F(c, t) > F(best, t)) best = c; return best; }
+    function P(t) { return [CX + S * (x0[0] + t * u[0]), CY - S * (x0[1] + t * u[1])]; }
+    function px(t) { return PL + (t - tmin) / rg * (PR - PL); }
+    function py(f) { return (PT + PB) / 2 - f / YR * (PB - PT) / 2; }
+
+    /* --- plano: regiones, fronteras, rectas f_c = 0, semiplanos, normales --- */
+    var L = { 1: lin(1), 2: lin(2), 3: lin(3) }, i, j;
+    for (i = 1; i <= 3; i++) {
+      var poly = BIG;
+      for (j = 1; j <= 3; j++) if (j !== i) poly = clip(poly, sub(L[i], L[j]));
+      $('reg' + i).setAttribute('d', path(poly));
+    }
+    boundary($('bd12'), 1, 2, 3, L); boundary($('bd13'), 1, 3, 2, L); boundary($('bd23'), 2, 3, 1, L);
+
+    for (c = 1; c <= 3; c++) {
+      var w = W[c], nn = Math.sqrt(w[0] * w[0] + w[1] * w[1]);
+      var nc = [w[0] / nn, -w[1] / nn], d = -B[c] / nn * S;
+      var p0 = [CX + nc[0] * d, CY + nc[1] * d], dir = [-nc[1], nc[0]];
+      var cz = chordPix(p0, dir);
+      $('pp' + c).setAttribute('d', path(clip(BIG, L[c])));
+      $('pn' + c).setAttribute('d', path(clip(BIG, neg(L[c]))));
+      setLine($('zl' + c), [p0[0] + cz[0] * dir[0], p0[1] + cz[0] * dir[1]], [p0[0] + cz[1] * dir[0], p0[1] + cz[1] * dir[1]]);
+      setText($('zt' + c), p0[0] + dir[0] * (cz[1] - 22) + nc[0] * 24, p0[1] + dir[1] * (cz[1] - 22) + nc[1] * 24 + 4);
+      setText($('lp' + c), CX + nc[0] * 165, CY + nc[1] * 165 + 5);
+      setText($('ln' + c), CX - nc[0] * 165, CY - nc[1] * 165 + 5);
+      setLine($('wa' + c), p0, [p0[0] + nc[0] * 80, p0[1] + nc[1] * 80]);
+    }
+    var A = sub(L[1], L[2]), Bq = sub(L[1], L[3]), det = A[0] * Bq[1] - A[1] * Bq[0], tp = $('tp');
+    if (Math.abs(det) < 1e-9) { tp.style.display = 'none'; }
+    else {
+      tp.setAttribute('cx', ((-A[2] * Bq[1] + A[1] * Bq[2]) / det).toFixed(1));
+      tp.setAttribute('cy', ((-A[0] * Bq[2] + A[2] * Bq[0]) / det).toFixed(1));
+      tp.style.display = '';
+    }
+
+    /* --- gráfico de scores --- */
+    var N = 400, bands = [], bps = [], env = '', s, t, prev = win(tmin), start = tmin;
+    for (s = 0; s <= N; s++) {
+      t = tmin + rg * s / N;
+      var wn = win(t), mx = Math.max(F(1, t), F(2, t), F(3, t));
+      env += (s ? ' L' : 'M') + px(t).toFixed(1) + ' ' + py(mx).toFixed(1);
+      if (wn !== prev) {
+        var tpv = tmin + rg * (s - 1) / N, dd = a[prev] - a[wn], ts = Math.abs(dd) > 1e-9 ? (k[wn] - k[prev]) / dd : (tpv + t) / 2;
+        ts = Math.min(Math.max(ts, tpv), t);
+        bands.push([start, ts, prev]); bps.push(ts); start = ts; prev = wn;
+      }
+    }
+    bands.push([start, tmax, prev]);
+
+    var html = '';
+    bands.forEach(function (b) { html += '<rect x="' + px(b[0]).toFixed(1) + '" y="30" width="' + (px(b[1]) - px(b[0])).toFixed(1) + '" height="200" fill="' + COL[b[2]] + '" fill-opacity="0.18"/>'; });
+    $('bands').innerHTML = html;
+    $('env').innerHTML = '<path d="' + env + '" fill="none" stroke="#888780" stroke-width="7" stroke-opacity="0.45" stroke-linejoin="round"/>';
+    html = '';
+    for (c = 1; c <= 3; c++) html += '<line x1="' + PL + '" y1="' + py(F(c, tmin)).toFixed(1) + '" x2="' + PR + '" y2="' + py(F(c, tmax)).toFixed(1) + '" stroke="' + COL[c] + '" stroke-width="2.5"/>';
+    $('lines').innerHTML = html;
+    html = '';
+    for (c = 1; c <= 3; c++) {
+      var ey = Math.min(Math.max(py(F(c, tmax)), 40), 224);
+      html += '<text class="th" x="646" y="' + (ey + 4).toFixed(1) + '" style="fill:' + COL[c] + '">f' + SUB[c] + '</text>';
+    }
+    $('endl').innerHTML = html;
+    html = '';
+    bps.forEach(function (b) { html += '<line x1="' + px(b).toFixed(1) + '" y1="30" x2="' + px(b).toFixed(1) + '" y2="230" stroke="#534AB7" stroke-width="1" stroke-dasharray="4 4"/>'; });
+    $('bp').innerHTML = html;
+
+    /* --- rebanada sobre el plano --- */
+    var tk = '';
+    bps.forEach(function (b) { var q = P(b); tk += '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="5" fill="var(--bg)" stroke="#534AB7" stroke-width="2"/>'; });
+    $('tk').innerHTML = tk;
+    var pS = P(tmin), pE = P(tmax);
+    setLine($('sl'), pS, pE);
+    labelEnd($('sl0'), pS, ds, 't = ' + st(tmin));
+    labelEnd($('sl1'), pE, [-ds[0], -ds[1]], 't = ' + st(tmax));
+
+    var wm = win(tm), pm = P(tm);
+    $('pm').setAttribute('cx', pm[0].toFixed(1)); $('pm').setAttribute('cy', pm[1].toFixed(1)); $('pm').setAttribute('fill', COL[wm]);
+    var mk = '<line x1="' + px(tm).toFixed(1) + '" y1="30" x2="' + px(tm).toFixed(1) + '" y2="230" stroke="#534AB7" stroke-width="2"/>';
+    for (c = 1; c <= 3; c++) {
+      var yy = Math.min(Math.max(py(F(c, tm)), 30), 230);
+      mk += '<circle cx="' + px(tm).toFixed(1) + '" cy="' + yy.toFixed(1) + '" r="5" fill="' + COL[c] + '" stroke="var(--bg)" stroke-width="2"/>';
+    }
+    $('mk').innerHTML = mk;
+    $('tl').textContent = st(tmin); $('tr').textContent = st(tmax);
+    if (tmin < 0 && tmax > 0) { $('tc').setAttribute('x', px(0).toFixed(1)); $('tc').textContent = '0'; } else { $('tc').textContent = ''; }
+
+    $('vth').textContent = th + '°'; $('vof').textContent = off.toFixed(1); $('vtm').textContent = 't = ' + tm.toFixed(1);
+    for (c = 1; c <= 3; c++) $('vb' + c).textContent = B[c].toFixed(1);
+
+    var e = '';
+    for (c = 1; c <= 3; c++) e += '<div><span style="color:' + COL[c] + ';font-weight:500">f' + SUB[c] + '(t)</span> = ' + sg(a[c]) + '·t ' + (k[c] < 0 ? '− ' : '+ ') + Math.abs(k[c]).toFixed(2) + '</div>';
+    e += '<div style="margin-top:6px">En t = ' + tm.toFixed(1) + ' gana la <span style="color:' + COL[wm] + ';font-weight:500">clase ' + wm + '</span> (scores: ' + sg(F(1, tm)) + ', ' + sg(F(2, tm)) + ', ' + sg(F(3, tm)) + ').</div>';
+    $('eqs').innerHTML = e;
+  }
+
+  ['sth', 'sof', 'stm'].forEach(function (id) { $(id).addEventListener('input', update); });
+  [1, 2, 3].forEach(function (c) { $('sb' + c).addEventListener('input', function (ev2) { B[c] = parseFloat(ev2.target.value); update(); }); });
+  $('reset').addEventListener('click', function () {
+    $('sth').value = DEF.th; $('sof').value = DEF.off; $('stm').value = DEF.tm;
+    [1, 2, 3].forEach(function (c) { B[c] = 0; $('sb' + c).value = 0; });
+    update();
+  });
+  buildGrid();
+  update();
+})();
+</script>
+</body>
+</html>
